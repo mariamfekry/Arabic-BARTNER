@@ -1,6 +1,8 @@
 import torch
 from .modeing_bart import BartEncoder, BartDecoder, BartModel
 from transformers import BartTokenizer
+import BarthezTokenizer
+# from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoConfig
 from fastNLP import seq_len_to_mask
 from fastNLP.modules import Seq2SeqEncoder, Seq2SeqDecoder, State
 import torch.nn.functional as F
@@ -225,13 +227,17 @@ class BartSeq2SeqModel(Seq2SeqModel):
     @classmethod
     def build_model(cls, bart_model, tokenizer, label_ids, decoder_type=None,
                     use_encoder_mlp=False):
-        model = BartModel.from_pretrained(bart_model)
+        # model = BartModel.from_pretrained(bart_model)
+        model = BartModel.from_pretrained("/home/m.fekry/BARTNER/model_bart/")
+        # config = AutoConfig.from_pretrained("/home/m.fekry/BARTNER/model_bart/config.json")
+        # model = BartModel.from_pretrained("/home/m.fekry/BARTNER/model_bart/pytorch_model.bin", config=config)
         num_tokens, _ = model.encoder.embed_tokens.weight.shape
         model.resize_token_embeddings(len(tokenizer.unique_no_split_tokens)+num_tokens)
         encoder = model.encoder
         decoder = model.decoder
 
-        _tokenizer = BartTokenizer.from_pretrained(bart_model)
+        # _tokenizer = BartTokenizer.from_pretrained(bart_model)
+        _tokenizer = BarthezTokenizer.BarthezTokenizer("/home/m.fekry/BARTNER/model_bart/sentencepiece.bpe.model")
         for token in tokenizer.unique_no_split_tokens:
             if token[:2] == '<<':  # 特殊字符
                 index = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(token))

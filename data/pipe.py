@@ -3,20 +3,23 @@ from fastNLP.io.loader.conll import _read_conll
 from fastNLP.io.pipe.utils import iob2, iob2bioes
 from fastNLP import DataSet, Instance
 from fastNLP.io import Pipe
-from transformers import AutoTokenizer
+# from transformers import AutoTokenizer
+# from transformers import AutoTokenizer, AutoConfig
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoConfig
 from fastNLP.core.metrics import _bio_tag_to_spans
 from fastNLP.io import DataBundle
 import numpy as np
 from itertools import chain
 from fastNLP import Const
 from functools import cmp_to_key
+import BarthezTokenizer
 import json
 from copy import deepcopy
 from tqdm import tqdm
 
 
 class BartNERPipe(Pipe):
-    def __init__(self, tokenizer='facebook/bart-large', dataset_name='conll2003', target_type='word'):
+    def __init__(self, tokenizer='/home/m.fekry/BARTNER/model_bart/pytorch_model.bin', dataset_name='conll2003', target_type='word'):
         """
 
         :param tokenizer:
@@ -28,16 +31,34 @@ class BartNERPipe(Pipe):
             span_bpe: 每一段都是start的所有bpe，end的所有bpe
         """
         super().__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
-
+        # self.tokenizer = AutoTokenizer.from_pretrained('/home/m.fekry/BARTNER/model_bart/sentencepiece.bpe.model')
+        self.tokenizer= BarthezTokenizer.BarthezTokenizer('/home/m.fekry/BARTNER/model_bart/sentencepiece.bpe.model')
         assert target_type in ('word', 'bpe', 'span')
 
-        if dataset_name == 'conll2003':
+        if dataset_name == 'conll2003' or dataset_name =='wojood': # modify to wojoods tags
             self.mapping = {
-                'loc': '<<location>>',
-                'per': '<<person>>',
+                "cardinal": "<<cardinal>>",
+                "curr": "<<currency>>",
+                "date": "<<date>>",
+                "event": "<<event>>",
+                "fac": "<<facility>>",
+                "gpe": "<<geopolitical>>",
+                "language": "<<language>>",
+                "law": "<<law>>",
+                "loc": "<<location>>",
+                "money": "<<money>>",
+                "norp": "<<norp>>",
+                "occ": "<<occupation>>",
+                "ordinal": "<<ordinal>>",
                 'org': '<<organization>>',
-                'misc': '<<others>>',
+                "percent": "<<percent>>",
+                "pers": "<<person>>",
+                "product": "<<product>>",
+                "quantity": "<<quantity>>",
+                "time": "<<time>>",
+                "unit": "<<unit>>",
+                "website": "<<website>>",
+                # 'misc': '<<others>>',
             }  # 记录的是原始tag与转换后的tag的str的匹配关系
         elif dataset_name == 'en-ontonotes':
             self.mapping = \
@@ -77,8 +98,9 @@ class BartNERPipe(Pipe):
             assert self.tokenizer.convert_tokens_to_ids([tok])[0] == self.tokenizer.unk_token_id
         self.tokenizer.unique_no_split_tokens = unique_no_split_tokens + sorted_add_tokens
         self.tokenizer.add_tokens(sorted_add_tokens)
-        self.mapping2id = {}  # 给定转换后的tag，输出的是在tokenizer中的id，用来初始化表示
-        self.mapping2targetid = {}  # 给定原始tag，输出对应的数字
+        self.mapping2id = {}  # 给定转换后的tag，输出的是在tokenizer中的id，用来初始化表示 # Given the converted tag, the output is the id in the tokenizer, which is used to initialize the representation.
+        self.mapping2targetid = {}  # 给定原始tag，输出对应的数字 # Given the original tag, output the corresponding number
+
 
         for key, value in self.mapping.items():
             key_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.tokenize(value))
@@ -99,15 +121,28 @@ class BartNERPipe(Pipe):
         :param data_bundle:
         :return:
         """
+        """
+        The supported DataSet fields are
+
+            entities: List[List[str]], each element is an entity, non-consecutive pieces are put together.
+            entity_tags: As long as above, it is the tag of each entity
+            raw_words: List[str]words
+            entity_spans: List[List[int]] records the start and end of the entity above. The length here must be an even number, which is the pair of start and end. end is an open interval.
+
+        :param data_bundle:
+        :return:
+        """
         self.add_tags_to_special_tokens(data_bundle)
 
         # 转换tag
-        target_shift = len(self.mapping) + 2  # 是由于第一位是sos，紧接着是eos, 然后是
+        target_shift = len(self.mapping) + 2  # 是由于第一位是sos，紧接着是eos, 然后是 # is because the first one is sos, followed by eos, and then
 
         def prepare_target(ins):
+            # print(ins)
             raw_words = ins['raw_words']
             word_bpes = [[self.tokenizer.bos_token_id]]
-            first = []  # 用来取每个word第一个bpe
+            first = []  # 用来取每个word第一个bpe # Used to get the first bpe of each word
+
             cur_bpe_len = 1
             for word in raw_words:
                 bpes = self.tokenizer.tokenize(word, add_prefix_space=True)
@@ -172,7 +207,7 @@ class BartNERPipe(Pipe):
             target.append(1)  # 特殊的eos
 
             word_bpes = list(chain(*word_bpes))
-            assert len(word_bpes)<500
+            # assert len(word_bpes)<500
 
             dict  = {'tgt_tokens': target, 'target_span': pairs, 'src_tokens': word_bpes,
                     'first': first}
@@ -202,7 +237,7 @@ class BartNERPipe(Pipe):
             path = paths
         else:
             path = paths['train']
-        if 'conll2003' in path or 'ontonotes' in path:
+        if 'wojood' in path or 'ontonotes' in path or 'ANER' in path:
             data_bundle = Conll2003NERLoader(demo=demo).load(paths)
         # elif 'ontonotes' in path:
         #     data_bundle = OntoNotesNERLoader(demo=demo).load(paths)
@@ -252,6 +287,11 @@ class Conll2003NERLoader(ConllLoader):
 
     def _load(self, path):
         r"""
+        A file path is passed in and the file is read into the DataSet. The fields are determined by the headers specified when ConllLoader is initialized.
+
+        :param str path: path to file
+        :return: DataSet
+        '''''''
         传入的一个文件路径，将该文件读入DataSet中，field由ConllLoader初始化时指定的headers决定。
 
         :param str path: 文件的路径
@@ -569,5 +609,5 @@ def cmp(v1, v2):
 
 
 if __name__ == '__main__':
-    data_bundle = Conll2003NERLoader(demo=False).load('data/conll2003')
+    data_bundle = Conll2003NERLoader(demo=False).load('data/wojood')
     BartNERPipe(target_type='word', dataset_name='conll2003').process(data_bundle)

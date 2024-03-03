@@ -9,22 +9,25 @@ from tqdm import tqdm
 import json
 
 
-dataset_name = 'conll2003'
-model_path = 'save_models/best_SequenceGeneratorModel_f_2021-06-09-01-47-26-903275'  # you can set args.save_model=1 in train.py
-bart_name = 'facebook/bart-large'
+dataset_name = 'wojood'
+model_path = '/home/m.fekry/BARTNER/save_models/best_SequenceGeneratorModel_f_2024-02-27-10-54-10-853408'  # you can set args.save_model=1 in train.py
+bart_name = 'moussaKam/AraBART'
 target_type = 'word'
 device = 'cuda:0'
 
-cache_fn = f"caches/data_{bart_name}_{dataset_name}_{target_type}.pt"
+cache_fn = f"caches/data_{bart_name}_wojood_{target_type}.pt"
 
 
-@cache_results(cache_fn, _refresh=False)
+@cache_results(cache_fn, _refresh=True)
 def get_data():
     pipe = BartNERPipe(tokenizer=bart_name, dataset_name=dataset_name, target_type=target_type)
-    if dataset_name == 'conll2003':
-        paths = {'test': "../data/conll2003/test.txt",
-                 'train': "../data/conll2003/train.txt",
-                 'dev': "../data/conll2003/dev.txt"}
+    if dataset_name == 'conll2003'or 'wojood':
+        # paths = {'test': "../data/conll2003/test.txt",
+        #          'train': "../data/conll2003/train.txt",
+        #          'dev': "../data/conll2003/dev.txt"}
+        paths = {'test': "../data/wojood/Wojood_test_set_conll.txt",
+                 'train': "../data/wojood/flat_train_mod.txt",
+                 'dev': "../data/wojood/Wojood_test_set_conll.txt"}
         data_bundle = pipe.process_from_file(paths, demo=False)
     elif dataset_name == 'en-ontonotes':
         paths = '../data/en-ontonotes/english'
@@ -46,13 +49,41 @@ eos_token_id = 0
 word_start_index = len(mapping2id) + 2
 not_bpe_start = 0
 
-if dataset_name == 'conll2003':  # if you use other dataset, please change this mapping
+if dataset_name == 'conll2003'or 'wojood':  # if you use other dataset, please change this mapping
+    # mapping = {
+    #     '<<location>>': 'LOC',
+    #     '<<person>>': 'PER',
+    #     '<<organization>>': 'ORG',
+    #     '<<others>>': 'MISC'
+    # }
     mapping = {
-        '<<location>>': 'LOC',
-        '<<person>>': 'PER',
-        '<<organization>>': 'ORG',
-        '<<others>>': 'MISC'
-    }
+            "<<cardinal>>": "CARDINAL",
+            "<<date>>": "DATE",
+            "<<event>>": "EVENT",
+            "<<facility>>": "FAC",
+            "<<geopolitical>>": "GPE",
+            "<<language>>": "LANGUAGE",
+            "<<law>>": "LAW",
+            "<<location>>": "LOC",
+            "<<money>>": "MONEY",
+            "<<quantity>>": "QUANTITY",
+            "<<currency>>": "CURR",
+            "<<ordinal>>": "ORDINAL",
+            "<<organization>>": "ORG",
+            "<<percent>>": "PERCENT",
+            "<<person>>": "PERS",
+            "<<product>>": "PRODUCT",
+            "<<time>>": "TIME",
+            "<<unit>>": "UNIT",
+            "<<website>>": "WEBSITE",
+            "<<norp>>": "NORP",
+            "<<occupation>>": "OCC",
+            # '<<location>>': 'loc',
+            # '<<person>>': 'per',
+            # '<<organization>>': 'org',
+            # '<<others>>': 'misc',
+        }
+
 elif dataset_name == 'en_ace04':
     mapping = {v: k for k, v in {
         'loc': '<<location>>', "gpe": "<<government>>", "wea": "<<weapon>>", 'veh': "<<vehicle>>",
@@ -106,7 +137,7 @@ for name in ['test']:
     ds = data_bundle.get_dataset(name)
     ds.set_ignore_type('raw_words', 'raw_target')
     ds.set_target('raw_words', 'raw_target')
-    with open(f'preds/{name}.conll', 'w', encoding='utf-8') as f:
+    with open(f'preds/{name}.woj6', 'w', encoding='utf-8') as f:
         data_iterator = DataSetIter(ds, batch_size=32, sampler=SequentialSampler())
         for batch_x, batch_y in tqdm(data_iterator, total=len(data_iterator)):
             _move_dict_value_to_device(batch_x, batch_y, device=device)
@@ -115,6 +146,7 @@ for name in ['test']:
             src_seq_len = batch_x['src_seq_len']
             tgt_seq_len = batch_x['tgt_seq_len']
             raw_words = batch_y['raw_words']
+            print(raw_words)
             raw_targets = batch_y['raw_target']
             pred_y = model.predict(src_tokens=src_tokens, src_seq_len=src_seq_len, first=first)
             pred = pred_y['pred']

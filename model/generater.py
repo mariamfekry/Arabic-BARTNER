@@ -24,6 +24,8 @@ class SequenceGeneratorModel(nn.Module):
         :param Seq2SeqModel seq2seq_model: 序列到序列模型. 会使用seq2seq_model的decoder进行生成
         :param int,None bos_token_id: 句子开头的token id
         :param int,None eos_token_id: 句子结束的token id
+        :param int max_length: The maximum length of the generated sentence, the decode length of each sentence is max_length + max_len_a*src_len
+        :param float max_len_a: The decode length of each sentence is max_length + max_len_a*src_len. If it is not 0, you need to ensure that the State contains encoder_mask
         :param int max_length: 生成句子的最大长度, 每句话的decode长度为max_length + max_len_a*src_len
         :param float max_len_a: 每句话的decode长度为max_length + max_len_a*src_len。 如果不为0，需要保证State中包含encoder_mask
         :param int num_beams: beam search的大小

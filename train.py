@@ -33,20 +33,21 @@ parser.add_argument('--dataset_name', default='conll2003', type=str)
 args= parser.parse_args()
 dataset_name = args.dataset_name
 args.length_penalty = 1
-args.save_model = 0
+args.save_model = 1
 
 # word: 生成word的start; bpe: 生成所有的bpe; span: 每一段按照start end生成; span_bpe: 每一段都是start的所有bpe，end的所有bpe
-args.target_type = 'word'
-args.bart_name = 'facebook/bart-large'
+args.target_type = 'bpe'
+# args.bart_name = 'facebook/bart-large'
+args.bart_name = 'moussaKam/AraBART'
 args.schedule = 'linear'
 args.decoder_type = 'avg_feature'
-args.n_epochs = 30
+args.n_epochs = 150
 args.num_beams = 1
-args.batch_size = 16
+args.batch_size = 8
 args.use_encoder_mlp = 1
-args.lr = 1e-5
+args.lr = 5e-5
 args.warmup_ratio = 0.01
-eval_start_epoch = 15
+eval_start_epoch = 20
 
 # the following hyper-parameters are for target_type=word
 if dataset_name == 'conll2003':  # three runs get 93.18/93.18/93.36 F1
@@ -109,17 +110,21 @@ fitlog.add_hyper(args)
 
 demo = False
 if demo:
-    cache_fn = f"caches/data_{bart_name}_{dataset_name}_{target_type}_demo.pt"
+    cache_fn = f"caches/data_{bart_name}_wojood_{target_type}_demo.pt"
 else:
-    cache_fn = f"caches/data_{bart_name}_{dataset_name}_{target_type}.pt"
+    cache_fn = f"caches/data_{bart_name}_wojood_{target_type}.pt"
 
 @cache_results(cache_fn, _refresh=False)
 def get_data():
     pipe = BartNERPipe(tokenizer=bart_name, dataset_name=dataset_name, target_type=target_type)
     if dataset_name == 'conll2003':
-        paths = {'test': "../data/conll2003/test.txt",
-                 'train': "../data/conll2003/train.txt",
-                 'dev': "../data/conll2003/dev.txt"}
+        # paths = {'test': "../data/conll2003/test.txt",
+        #          'train': "../data/conll2003/train.txt",
+        #          'dev': "../data/conll2003/dev.txt"}
+        paths = {'test': "../data/wojood/flat_val_mod.txt",
+                 'train': "../data/wojood/flat_train_mod.txt",
+                 'dev': "../data/wojood/flat_val_mod.txt"}
+        
         data_bundle = pipe.process_from_file(paths, demo=demo)
     elif dataset_name == 'en-ontonotes':
         paths = '../data/en-ontonotes/english'
@@ -132,8 +137,8 @@ data_bundle, tokenizer, mapping2id = get_data()
 
 print(f'max_len_a:{max_len_a}, max_len:{max_len}')
 
-print(data_bundle)
-print("The number of tokens in tokenizer ", len(tokenizer.decoder))
+# print(data_bundle)
+# print("The number of tokens in tokenizer ", len(tokenizer.decoder))
 
 bos_token_id = 0
 eos_token_id = 1
@@ -212,19 +217,27 @@ if dataset_name in ('en_ace04',) and target_type == 'bpe':
 elif ('large' in bart_name and dataset_name in ('en-ontonotes', 'genia')):
     sampler = ConstTokenNumSampler('src_seq_len', max_token=3000)
 else:
-    sampler = BucketSampler(seq_len_field_name='src_seq_len')
+    # sampler = BucketSampler(seq_len_field_name='src_seq_len')
+    sampler = ConstTokenNumSampler('src_seq_len', max_token=3000)
 
 metric = Seq2SeqSpanMetric(eos_token_id, num_labels=len(label_ids), target_type=target_type)
 
 ds = data_bundle.get_dataset('train')
-if dataset_name == 'conll2003':
-    ds.concat(data_bundle.get_dataset('dev'))
-    data_bundle.delete_dataset('dev')
+# if dataset_name == 'conll2003': # close because wojood has all
+#     print('add dev to train for conll2003')
+#     ds.concat(data_bundle.get_dataset('dev'))
+#     data_bundle.delete_dataset('dev')
 if save_model == 1:
-    save_path = 'save_models/'
+    save_path = '/home/m.fekry/BARTNER/save_models/'
 else:
     save_path = None
 validate_every = 100000
+# for batch in ds:
+    # print(type(batch))
+    # break
+# exit()
+# print data bundle
+# print(data_bundle)
 trainer = Trainer(train_data=ds, model=model, optimizer=optimizer,
                   loss=Seq2SeqLoss(),
                   batch_size=batch_size, sampler=sampler, drop_last=False, update_every=1,
