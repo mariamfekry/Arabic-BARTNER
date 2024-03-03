@@ -1,0 +1,5 @@
+*.err
+*.out
+*/__pycache__/*
+save_models/*
+save_models.zip
